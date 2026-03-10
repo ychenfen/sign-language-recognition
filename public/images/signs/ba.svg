@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#409eff20"/>
+      <stop offset="100%" style="stop-color:#409eff10"/>
+    </linearGradient>
+  </defs>
+  <!-- 背景 -->
+  <rect width="200" height="200" fill="url(#bg)" rx="16"/>
+  <rect x="4" y="4" width="192" height="192" fill="none" stroke="#409eff" stroke-width="2" rx="14" opacity="0.3"/>
+
+  <!-- 手形图标 -->
+  <g transform="translate(100, 75)">
+    <circle cx="0" cy="0" r="45" fill="#409eff" opacity="0.15"/>
+    <text x="0" y="8" text-anchor="middle" font-size="40" fill="#409eff">🤟</text>
+  </g>
+
+  <!-- 词汇 -->
+  <text x="100" y="145" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#409eff" font-weight="bold">八</text>
+
+  <!-- 说明 -->
+  <text x="100" y="170" text-anchor="middle" font-family="Arial, sans-serif" font-size="11" fill="#666">拇指食指张开成八字...</text>
+
+  <!-- 拼音 -->
+  <text x="100" y="188" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#999">ba</text>
+</svg>
