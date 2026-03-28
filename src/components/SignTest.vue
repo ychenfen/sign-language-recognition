@@ -135,9 +135,14 @@
         <div class="question-content">
           <h3>请选择下面手语图片对应的词汇</h3>
           <div class="sign-image">
-            <div class="image-placeholder">
-              <span>{{ currentQuestion?.answer }}</span>
-            </div>
+            <img
+              v-if="currentQuestion?.image"
+              :src="currentQuestion.image"
+              :alt="currentQuestion.answer"
+              class="question-sign-image"
+              @error="handleQuestionImageError"
+            />
+            <div v-else class="image-placeholder">暂无手语图片</div>
           </div>
         </div>
 
@@ -278,6 +283,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Lock, Clock, Close, ArrowRight, Delete, CircleCheck, CircleClose } from '@element-plus/icons-vue'
+import { getWords, userScopedKey } from '../data/appDataStore'
 
 const isTestStarted = ref(false)
 const testMode = ref('')
@@ -305,59 +311,16 @@ const achievements = ref([
   { id: 6, name: '知错能改', icon: '✨', description: '清空错题本', unlocked: false }
 ])
 
-// 词汇库
-const vocabulary = {
-  easy: [
-    { word: '你好', category: '问候' },
-    { word: '谢谢', category: '问候' },
-    { word: '再见', category: '问候' },
-    { word: '一', category: '数字' },
-    { word: '二', category: '数字' },
-    { word: '三', category: '数字' },
-    { word: '四', category: '数字' },
-    { word: '五', category: '数字' },
-    { word: '是', category: '日常' },
-    { word: '不是', category: '日常' }
-  ],
-  medium: [
-    { word: '对不起', category: '问候' },
-    { word: '请', category: '问候' },
-    { word: '不客气', category: '问候' },
-    { word: '知道', category: '日常' },
-    { word: '不知道', category: '日常' },
-    { word: '帮助', category: '日常' },
-    { word: '可以', category: '日常' },
-    { word: '喜欢', category: '情感' },
-    { word: '高兴', category: '情感' },
-    { word: '爸爸', category: '家庭' },
-    { word: '妈妈', category: '家庭' },
-    { word: '六', category: '数字' },
-    { word: '七', category: '数字' },
-    { word: '八', category: '数字' },
-    { word: '九', category: '数字' }
-  ],
-  hard: [
-    { word: '早上好', category: '问候' },
-    { word: '晚安', category: '问候' },
-    { word: '等一下', category: '日常' },
-    { word: '吃饭', category: '日常' },
-    { word: '喝水', category: '日常' },
-    { word: '工作', category: '日常' },
-    { word: '学习', category: '日常' },
-    { word: '难过', category: '情感' },
-    { word: '生气', category: '情感' },
-    { word: '害怕', category: '情感' },
-    { word: '爱', category: '情感' },
-    { word: '今天', category: '时间' },
-    { word: '明天', category: '时间' },
-    { word: '昨天', category: '时间' },
-    { word: '哥哥', category: '家庭' },
-    { word: '姐姐', category: '家庭' },
-    { word: '朋友', category: '家庭' },
-    { word: '看', category: '动作' },
-    { word: '听', category: '动作' },
-    { word: '说', category: '动作' }
-  ]
+const MODE_CATEGORIES = {
+  easy: ['基础词汇', '情绪表达'],
+  medium: ['基础词汇', '情绪表达', '家庭称谓'],
+  hard: null
+}
+
+const QUESTION_LIMITS = {
+  easy: 10,
+  medium: 15,
+  hard: 20
 }
 
 const unlockedCount = computed(() => {
@@ -385,6 +348,45 @@ const currentQuestion = computed(() => {
   return questions.value[currentIndex.value]
 })
 
+const getWordBank = () => {
+  return getWords().filter(item => item.image)
+}
+
+const shuffleArray = (items = []) => {
+  return [...items].sort(() => Math.random() - 0.5)
+}
+
+const getAllWords = () => {
+  return getWordBank().map(item => item.word)
+}
+
+const getPoolByMode = (mode) => {
+  const bank = getWordBank()
+  if (mode === 'hard') {
+    return bank
+  }
+
+  const categories = MODE_CATEGORIES[mode] || []
+  return bank.filter(item => categories.includes(item.category))
+}
+
+const normalizeWrongBookItem = (item, index = 0) => {
+  const bank = getWordBank()
+  const correctAnswer = item.correctAnswer || item.answer || ''
+  const matchedWord = bank.find(word => word.id === item.wordId || word.word === correctAnswer)
+
+  return {
+    wordId: item.wordId || matchedWord?.id || Date.now() + index,
+    question: item.question || '请选择下面手语图片对应的词汇',
+    answer: correctAnswer,
+    correctAnswer,
+    image: item.image || matchedWord?.image || '',
+    category: item.category || matchedWord?.category || '错题',
+    userAnswer: item.userAnswer || '',
+    wrongCount: Number(item.wrongCount || 1)
+  }
+}
+
 const getScoreLevel = () => {
   const accuracy = score.value / questions.value.length
   if (accuracy >= 0.9) return 'excellent'
@@ -394,53 +396,48 @@ const getScoreLevel = () => {
 }
 
 const generateQuestions = (mode) => {
-  let wordPool = []
-  let questionCount = 10
-
-  if (mode === 'easy') {
-    wordPool = [...vocabulary.easy]
-    questionCount = 10
-  } else if (mode === 'medium') {
-    wordPool = [...vocabulary.easy, ...vocabulary.medium]
-    questionCount = 15
-  } else if (mode === 'hard') {
-    wordPool = [...vocabulary.easy, ...vocabulary.medium, ...vocabulary.hard]
-    questionCount = 20
-  } else if (mode === 'wrongBook') {
+  if (mode === 'wrongBook') {
     return wrongBookList.value.map(item => ({
-      answer: item.answer,
+      id: item.wordId,
+      answer: item.correctAnswer || item.answer,
+      image: item.image,
+      category: item.category,
       options: generateOptions(item.answer, getAllWords())
     }))
   }
 
-  const shuffled = wordPool.sort(() => Math.random() - 0.5).slice(0, questionCount)
-  return shuffled.map(item => ({
+  const wordPool = getPoolByMode(mode)
+  const questionCount = Math.min(QUESTION_LIMITS[mode] || wordPool.length, wordPool.length)
+
+  return shuffleArray(wordPool).slice(0, questionCount).map(item => ({
+    id: item.id,
     answer: item.word,
-    options: generateOptions(item.word, wordPool.map(w => w.word))
+    image: item.image,
+    category: item.category,
+    options: generateOptions(item.word, getAllWords())
   }))
 }
 
-const getAllWords = () => {
-  return [
-    ...vocabulary.easy,
-    ...vocabulary.medium,
-    ...vocabulary.hard
-  ].map(w => w.word)
-}
-
 const generateOptions = (answer, pool) => {
-  const options = [answer]
-  const otherWords = pool.filter(w => w !== answer)
-  while (options.length < 4 && otherWords.length > 0) {
-    const randomIndex = Math.floor(Math.random() * otherWords.length)
-    options.push(otherWords.splice(randomIndex, 1)[0])
+  const options = new Set([answer])
+  const otherWords = shuffleArray(pool.filter(word => word !== answer))
+
+  while (options.size < 4 && otherWords.length > 0) {
+    options.add(otherWords.shift())
   }
-  return options.sort(() => Math.random() - 0.5)
+
+  return shuffleArray(Array.from(options))
 }
 
 const startTest = (mode) => {
+  const generatedQuestions = generateQuestions(mode)
+  if (generatedQuestions.length === 0) {
+    ElMessage.warning(mode === 'wrongBook' ? '错题本暂时没有可练习的题目' : '当前题库不足，无法开始测试')
+    return
+  }
+
   testMode.value = mode
-  questions.value = generateQuestions(mode)
+  questions.value = generatedQuestions
   currentIndex.value = 0
   selectedAnswer.value = null
   showResult.value = false
@@ -482,7 +479,7 @@ const selectAnswer = (option) => {
   if (isCorrect.value) {
     score.value++
   } else {
-    addToWrongBook(currentQuestion.value.answer, option)
+    addToWrongBook(currentQuestion.value, option)
   }
 }
 
@@ -551,14 +548,20 @@ const restartTest = () => {
   startTest(testMode.value)
 }
 
-const addToWrongBook = (answer, userAnswer) => {
-  const existing = wrongBookList.value.find(item => item.answer === answer)
+const addToWrongBook = (question, userAnswer) => {
+  const existing = wrongBookList.value.find(item => item.answer === question.answer)
   if (existing) {
     existing.wrongCount++
     existing.userAnswer = userAnswer
+    existing.image = question.image || existing.image
   } else {
     wrongBookList.value.push({
-      answer,
+      wordId: question.id,
+      question: '请选择下面手语图片对应的词汇',
+      answer: question.answer,
+      correctAnswer: question.answer,
+      image: question.image,
+      category: question.category,
       userAnswer,
       wrongCount: 1
     })
@@ -597,15 +600,15 @@ const getResultMessage = () => {
 }
 
 const saveWrongBook = () => {
-  localStorage.setItem('wrongBook', JSON.stringify(wrongBookList.value))
+  localStorage.setItem(userScopedKey('wrongBook'), JSON.stringify(wrongBookList.value))
 }
 
 const saveAchievements = () => {
-  localStorage.setItem('testAchievements', JSON.stringify(achievements.value))
+  localStorage.setItem(userScopedKey('testAchievements'), JSON.stringify(achievements.value))
 }
 
 const saveTestRecord = () => {
-  const records = JSON.parse(localStorage.getItem('testRecords') || '[]')
+  const records = JSON.parse(localStorage.getItem(userScopedKey('testRecords')) || '[]')
   records.push({
     mode: testMode.value,
     score: score.value,
@@ -613,7 +616,7 @@ const saveTestRecord = () => {
     time: usedTime.value,
     date: new Date().toLocaleString()
   })
-  localStorage.setItem('testRecords', JSON.stringify(records.slice(-50)))
+  localStorage.setItem(userScopedKey('testRecords'), JSON.stringify(records.slice(-50)))
 
   if (records.length >= 10 && !achievements.value[3].unlocked) {
     achievements.value[3].unlocked = true
@@ -621,15 +624,31 @@ const saveTestRecord = () => {
   }
 }
 
+const handleQuestionImageError = (event) => {
+  event.target.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 320"><rect fill="%23eef2ff" width="320" height="320" rx="24"/><text x="160" y="155" text-anchor="middle" fill="%236366f1" font-size="24">手语图片加载失败</text><text x="160" y="190" text-anchor="middle" fill="%2394a3b8" font-size="16">请检查资源文件</text></svg>'
+}
+
 onMounted(() => {
-  const savedWrongBook = localStorage.getItem('wrongBook')
+  const savedWrongBook = localStorage.getItem(userScopedKey('wrongBook'))
   if (savedWrongBook) {
-    wrongBookList.value = JSON.parse(savedWrongBook)
+    try {
+      const parsed = JSON.parse(savedWrongBook)
+      wrongBookList.value = Array.isArray(parsed)
+        ? parsed.map((item, index) => normalizeWrongBookItem(item, index))
+        : []
+    } catch (error) {
+      wrongBookList.value = []
+    }
   }
 
-  const savedAchievements = localStorage.getItem('testAchievements')
+  const savedAchievements = localStorage.getItem(userScopedKey('testAchievements'))
   if (savedAchievements) {
-    achievements.value = JSON.parse(savedAchievements)
+    try {
+      const parsed = JSON.parse(savedAchievements)
+      achievements.value = Array.isArray(parsed) ? parsed : achievements.value
+    } catch (error) {
+      achievements.value = achievements.value
+    }
   }
 })
 
@@ -1025,17 +1044,29 @@ onUnmounted(() => {
   margin-bottom: 28px;
 }
 
+.question-sign-image {
+  width: min(100%, 280px);
+  aspect-ratio: 1 / 1;
+  border-radius: 20px;
+  object-fit: contain;
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 12px 30px rgba(99, 102, 241, 0.08);
+  padding: 16px;
+}
+
 .image-placeholder {
-  width: 180px;
-  height: 180px;
-  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  width: min(100%, 280px);
+  aspect-ratio: 1 / 1;
+  background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%);
   border-radius: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 48px;
-  font-weight: 700;
+  color: #6366f1;
+  font-size: 18px;
+  font-weight: 600;
+  border: 1px dashed #c7d2fe;
 }
 
 .options-grid {
@@ -1410,6 +1441,10 @@ onUnmounted(() => {
 
   .options-grid {
     grid-template-columns: 1fr;
+  }
+
+  .question-area {
+    padding: 20px;
   }
 
   .result-stats {

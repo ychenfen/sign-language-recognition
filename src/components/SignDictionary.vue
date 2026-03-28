@@ -207,8 +207,9 @@
             <div class="detail-section steps-section">
               <h3 class="section-title">
                 <span class="title-icon">👋</span>
-                动作分解
+                动作提示
               </h3>
+              <p class="section-note">以下步骤用于帮助理解和记忆，具体做法以配图和视频示范为准。</p>
               <div class="steps-list">
                 <div
                   v-for="(step, index) in currentWord.steps"
@@ -247,7 +248,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Search, Star, StarFilled, VideoPlay, Close, Grid, List } from '@element-plus/icons-vue'
-import { getWords, getFavorites, saveFavorites } from '../data/appDataStore'
+import { getWords, getFavorites, saveFavorites, userScopedKey } from '../data/appDataStore'
+import { matchesVocabularyKeyword } from '../data/signResources'
 
 const searchKeyword = ref('')
 const currentCategory = ref('全部')
@@ -295,12 +297,7 @@ const filteredWords = computed(() => {
 
   // 按关键词搜索
   if (searchKeyword.value) {
-    const keyword = searchKeyword.value.toLowerCase()
-    result = result.filter(w =>
-      w.word.includes(searchKeyword.value) ||
-      w.pinyin.toLowerCase().includes(keyword) ||
-      w.description.includes(searchKeyword.value)
-    )
+    result = result.filter(word => matchesVocabularyKeyword(word, searchKeyword.value))
   }
 
   return result
@@ -373,12 +370,11 @@ const removeFavorite = (wordId) => {
   saveFavorites(favorites)
 }
 
-// 添加学习历史
+// 添加学习历史（按用户隔离）
 const addToHistory = (word) => {
-  let history = JSON.parse(localStorage.getItem('learningHistory') || '[]')
-  // 移除重复
+  const key = userScopedKey('learningHistory')
+  let history = JSON.parse(localStorage.getItem(key) || '[]')
   history = history.filter(h => h.id !== word.id)
-  // 添加到最前面
   history.unshift({
     id: word.id,
     word: word.word,
@@ -389,9 +385,8 @@ const addToHistory = (word) => {
     category: word.category,
     time: new Date().toLocaleString()
   })
-  // 只保留最近50条
   if (history.length > 50) history = history.slice(0, 50)
-  localStorage.setItem('learningHistory', JSON.stringify(history))
+  localStorage.setItem(key, JSON.stringify(history))
 }
 
 // 加载收藏状态
@@ -577,6 +572,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 20px;
   padding: 0 8px;
 }
@@ -604,7 +601,7 @@ onMounted(() => {
 /* 词汇网格 */
 .vocabulary-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
   gap: 20px;
 }
 
@@ -933,6 +930,8 @@ onMounted(() => {
 .detail-header {
   display: flex;
   gap: 24px;
+  align-items: flex-start;
+  flex-wrap: wrap;
   margin-bottom: 32px;
   padding: 24px;
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.05), rgba(118, 75, 162, 0.05));
@@ -960,6 +959,7 @@ onMounted(() => {
 
 .detail-info {
   flex: 1;
+  min-width: 0;
 }
 
 .detail-title {
@@ -974,6 +974,7 @@ onMounted(() => {
 
 .detail-meta {
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   margin-bottom: 12px;
 }
@@ -1005,10 +1006,18 @@ onMounted(() => {
 .detail-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .detail-section {
   margin-bottom: 28px;
+}
+
+.section-note {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.6;
 }
 
 .section-title {
@@ -1180,8 +1189,12 @@ onMounted(() => {
     padding: 12px 16px;
   }
 
+  .stats-bar {
+    align-items: stretch;
+  }
+
   .vocabulary-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
   }
 

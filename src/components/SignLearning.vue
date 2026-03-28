@@ -198,7 +198,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, VideoPlay, Close, ArrowLeft, ArrowRight, Clock, List, VideoCameraFilled } from '@element-plus/icons-vue'
-import { getCourses } from '../data/appDataStore'
+import { getCourses, userScopedKey } from '../data/appDataStore'
 
 const currentCourseId = ref(1)
 const currentLesson = ref(null)
@@ -351,20 +351,21 @@ const onVideoEnded = () => {
   }
 }
 
-// 保存进度
+// 保存进度（按用户隔离）
 const saveProgress = () => {
-  const learningHistory = JSON.parse(localStorage.getItem('learningHistory') || '[]')
+  const historyKey = userScopedKey('learningHistory')
+  const learningHistory = JSON.parse(localStorage.getItem(historyKey) || '[]')
   const completedCourses = videoCourses.value.filter(course =>
     course.lessons.length > 0 && course.lessons.every(lesson => completedLessons.value.includes(lesson.id))
   ).length
 
-  localStorage.setItem('videoLearningProgress', JSON.stringify({
+  localStorage.setItem(userScopedKey('videoLearningProgress'), JSON.stringify({
     completedLessons: completedLessons.value,
     stats: stats.value,
     lastUpdate: new Date().toISOString()
   }))
 
-  localStorage.setItem('learningProgress', JSON.stringify({
+  localStorage.setItem(userScopedKey('learningProgress'), JSON.stringify({
     learnedWords: learningHistory.length,
     completedCourses,
     completedLessons: completedLessons.value.length,
@@ -372,9 +373,9 @@ const saveProgress = () => {
   }))
 }
 
-// 加载进度
+// 加载进度（按用户隔离）
 const loadProgress = () => {
-  const saved = localStorage.getItem('videoLearningProgress')
+  const saved = localStorage.getItem(userScopedKey('videoLearningProgress'))
   if (saved) {
     const data = JSON.parse(saved)
     completedLessons.value = data.completedLessons || []
@@ -382,7 +383,7 @@ const loadProgress = () => {
     return
   }
 
-  const legacyProgress = localStorage.getItem('learningProgress')
+  const legacyProgress = localStorage.getItem(userScopedKey('learningProgress'))
   if (legacyProgress) {
     const parsed = JSON.parse(legacyProgress)
     if (Array.isArray(parsed.completedLessons)) {

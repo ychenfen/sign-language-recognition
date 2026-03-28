@@ -7,7 +7,7 @@ Resources:
 - Dynamic actions: LSTM model trained on 6 common sign language actions
 - AI Assistant: Alibaba Tongyi Qwen integration
 """
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_from_directory
 from flask_cors import CORS
 import cv2
 import mediapipe as mp
@@ -35,7 +35,11 @@ except ImportError:
     AI_AVAILABLE = False
     print("Warning: AI integration not available")
 
-app = Flask(__name__)
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(BACKEND_DIR)
+DIST_DIR = os.path.join(PROJECT_ROOT, 'dist')
+
+app = Flask(__name__, static_folder=DIST_DIR, static_url_path='/')
 CORS(app)
 
 # ==================== MediaPipe Setup ====================
@@ -289,6 +293,10 @@ def process_image_lstm(image_data):
         }
 
 
+def frontend_ready():
+    return os.path.exists(os.path.join(DIST_DIR, 'index.html'))
+
+
 # ==================== API Endpoints ====================
 
 @app.route('/api/health', methods=['GET'])
@@ -454,9 +462,73 @@ def ai_explain_gesture(gesture_id):
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/ai/suggestion', methods=['POST'])
+def ai_learning_suggestion():
+    """Get personalized learning suggestions"""
+    if not AI_AVAILABLE:
+        return jsonify({"error": "AI service not available"}), 503
+
+    try:
+        data = request.get_json() or {}
+        completed = data.get('completed_gestures', [])
+        accuracy = data.get('accuracy_history', None)
+        suggestion = ai_assistant.get_learning_suggestion(completed, accuracy)
+        return jsonify(suggestion)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/ai/feedback', methods=['POST'])
+def ai_practice_feedback():
+    """Get AI-generated feedback for practice"""
+    if not AI_AVAILABLE:
+        return jsonify({"error": "AI service not available"}), 503
+
+    try:
+        data = request.get_json() or {}
+        gesture_id = data.get('gesture_id')
+        is_correct = data.get('is_correct')
+        confidence = data.get('confidence', 0.5)
+
+        if gesture_id is None or is_correct is None:
+            return jsonify({"error": "Missing gesture_id or is_correct"}), 400
+
+        feedback = ai_assistant.generate_practice_feedback(
+            gesture_id,
+            bool(is_correct),
+            float(confidence)
+        )
+        return jsonify(feedback)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    """Serve built frontend in customer delivery mode."""
+    if path.startswith('api/'):
+        return jsonify({"error": "Not found"}), 404
+
+    if not frontend_ready():
+        return Response(
+            "Frontend build not found. Run `npm install && npm run build` in the project root.",
+            mimetype='text/plain',
+            status=503
+        )
+
+    asset_path = os.path.join(DIST_DIR, path)
+    if path and os.path.exists(asset_path) and os.path.isfile(asset_path):
+        return send_from_directory(DIST_DIR, path)
+
+    return send_from_directory(DIST_DIR, 'index.html')
+
+
 # ==================== Main ====================
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', '5001'))
+    debug = os.environ.get('FLASK_DEBUG', '0') == '1'
     print("=" * 60)
     print("Sign Language Recognition API Server")
     print("=" * 60)
@@ -474,7 +546,11 @@ if __name__ == '__main__':
     print("\nAI Endpoints:")
     print("  POST /api/ai/chat             - Chat with AI assistant")
     print("  GET  /api/ai/explain/<id>     - Get gesture explanation")
+    print("  POST /api/ai/suggestion       - Get learning suggestions")
+    print("  POST /api/ai/feedback         - Get practice feedback")
+    print("\nFrontend:")
+    print(f"  - Built frontend detected: {'Yes' if frontend_ready() else 'No'}")
     print("=" * 60)
-    print("Starting server on http://localhost:5001")
+    print(f"Starting server on http://localhost:{port}")
 
-    app.run(host='0.0.0.0', port=5001, debug=True, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=debug, threaded=True)

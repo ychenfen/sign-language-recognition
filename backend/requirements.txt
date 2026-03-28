@@ -1,0 +1,8 @@
+flask>=3.0,<4.0
+flask-cors>=4.0,<5.0
+mediapipe==0.10.13
+dashscope>=1.20,<2.0
+
+# Optional for dynamic LSTM action recognition:
+# macOS Apple Silicon: tensorflow-macos==2.16.*
+# Other platforms: tensorflow==2.16.*

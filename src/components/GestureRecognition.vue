@@ -88,19 +88,47 @@
 </template>
 
 <script>
-import { Hands } from '@mediapipe/hands'
-import { Camera } from '@mediapipe/camera_utils'
+import { Refresh } from '@element-plus/icons-vue'
+import handLandmarkFullUrl from '@mediapipe/hands/hand_landmark_full.tflite?url'
+import handLandmarkLiteUrl from '@mediapipe/hands/hand_landmark_lite.tflite?url'
+import handsBinaryUrl from '@mediapipe/hands/hands.binarypb?url'
+import packedAssetsDataUrl from '@mediapipe/hands/hands_solution_packed_assets.data?url'
+import packedAssetsLoaderUrl from '@mediapipe/hands/hands_solution_packed_assets_loader.js?url'
+import simdDataUrl from '@mediapipe/hands/hands_solution_simd_wasm_bin.data?url'
+import simdJsUrl from '@mediapipe/hands/hands_solution_simd_wasm_bin.js?url'
+import simdWasmUrl from '@mediapipe/hands/hands_solution_simd_wasm_bin.wasm?url'
+import wasmJsUrl from '@mediapipe/hands/hands_solution_wasm_bin.js?url'
+import wasmWasmUrl from '@mediapipe/hands/hands_solution_wasm_bin.wasm?url'
+import { loadHandsCtor, loadCameraCtor } from '../utils/mediapipeLoader'
+
+const mediapipeAssetMap = {
+  'hand_landmark_full.tflite': handLandmarkFullUrl,
+  'hand_landmark_lite.tflite': handLandmarkLiteUrl,
+  'hands.binarypb': handsBinaryUrl,
+  'hands_solution_packed_assets.data': packedAssetsDataUrl,
+  'hands_solution_packed_assets_loader.js': packedAssetsLoaderUrl,
+  'hands_solution_simd_wasm_bin.data': simdDataUrl,
+  'hands_solution_simd_wasm_bin.js': simdJsUrl,
+  'hands_solution_simd_wasm_bin.wasm': simdWasmUrl,
+  'hands_solution_wasm_bin.js': wasmJsUrl,
+  'hands_solution_wasm_bin.wasm': wasmWasmUrl
+}
 
 export default {
   name: 'GestureRecognition',
+  components: {
+    Refresh
+  },
   data() {
     return {
       isRecognizing: false,
       cameraLoading: false,
       mirrorMode: true,
       recognitionResult: null,
+      initializationError: '',
       hands: null,
       camera: null,
+      cameraCtor: null,
 
       // 支持的手语词汇
       supportedGestures: [
@@ -131,10 +159,18 @@ export default {
     // 初始化手部检测
     async initializeHandDetection() {
       try {
-        this.hands = new Hands({
-          locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-          }
+        const [HandsCtor, CameraCtor] = await Promise.all([
+          loadHandsCtor(),
+          loadCameraCtor()
+        ])
+
+        if (typeof HandsCtor !== 'function' || typeof CameraCtor !== 'function') {
+          throw new Error('浏览器本地识别组件初始化失败')
+        }
+        this.cameraCtor = CameraCtor
+
+        this.hands = new HandsCtor({
+          locateFile: file => mediapipeAssetMap[file] || `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
         })
 
         this.hands.setOptions({
@@ -148,8 +184,9 @@ export default {
 
         console.log('✅ 手部检测初始化成功')
       } catch (error) {
+        this.initializationError = error?.message || '浏览器本地识别初始化失败，请刷新页面重试'
         console.error('❌ 手部检测初始化失败:', error)
-        this.$message.error('手部检测初始化失败，请刷新页面重试')
+        this.$message.error(this.initializationError)
       }
     },
 
@@ -167,10 +204,17 @@ export default {
       try {
         this.cameraLoading = true
 
+        if (this.initializationError || !this.hands) {
+          throw new Error(this.initializationError || '浏览器本地识别尚未准备完成')
+        }
+        if (typeof this.cameraCtor !== 'function') {
+          throw new Error('摄像头组件初始化失败')
+        }
+
         const videoElement = this.$refs.videoElement
         const canvasElement = this.$refs.canvasElement
 
-        this.camera = new Camera(videoElement, {
+        this.camera = new this.cameraCtor(videoElement, {
           onFrame: async () => {
             await this.hands.send({ image: videoElement })
           },
@@ -189,7 +233,7 @@ export default {
 
       } catch (error) {
         console.error('启动识别失败:', error)
-        this.$message.error('无法访问摄像头，请检查权限设置')
+        this.$message.error(error?.message || '无法访问摄像头，请检查权限设置')
       } finally {
         this.cameraLoading = false
       }
@@ -438,9 +482,10 @@ export default {
       if (this.camera) {
         this.camera.stop()
       }
-      if (this.hands) {
+      if (this.hands?.close) {
         this.hands.close()
       }
+      this.cameraCtor = null
     }
   }
 }

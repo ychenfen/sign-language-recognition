@@ -3,8 +3,7 @@
     <template #header>
       <div class="card-header">
         <span>🤖 AI手语助手</span>
-        <el-tag type="success" v-if="isConnected" size="small">在线</el-tag>
-        <el-tag type="danger" v-else size="small">离线</el-tag>
+        <el-tag :type="serviceTagType" size="small">{{ serviceTagText }}</el-tag>
       </div>
     </template>
 
@@ -86,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Promotion as Send } from '@element-plus/icons-vue'
 import { aiChat, checkHealth, getLearningAdvice as getAdvice } from '../api/gestureApi.js'
@@ -98,6 +97,9 @@ const isConnected = ref(false)
 const adviceLoading = ref(false)
 const messagesContainer = ref(null)
 let connectionTimer = null
+
+const serviceTagType = computed(() => (isConnected.value ? 'success' : 'info'))
+const serviceTagText = computed(() => (isConnected.value ? '服务可用' : '离线知识'))
 
 const quickQuestions = [
   '点赞手势怎么做？',

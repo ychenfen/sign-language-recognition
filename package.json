@@ -1,7 +1,7 @@
 {
   "name": "sign-language-recognition",
   "version": "1.0.0",
-  "description": "手语识别学习应用",
+  "description": "手语学习平台",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,8 @@
   "dependencies": {
     "@mediapipe/camera_utils": "^0.3.1640029074",
     "@mediapipe/hands": "^0.4.1646424915",
-    "element-plus": "^2.3.8",
+    "docx": "^9.6.1",
+    "element-plus": "2.3.8",
     "vue": "^3.3.4"
   },
   "devDependencies": {

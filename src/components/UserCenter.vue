@@ -226,7 +226,16 @@
 import { ref, reactive, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
-import { getFavorites, saveFavorites, getUsers, saveUsers } from '../data/appDataStore'
+import {
+  ensureUserStorageInitialized,
+  getFavorites,
+  saveFavorites,
+  getUsers,
+  saveUsers,
+  getWords,
+  getCourses,
+  userScopedKey
+} from '../data/appDataStore'
 
 const emit = defineEmits(['login-success', 'logout', 'go-to'])
 
@@ -275,9 +284,9 @@ const learningHistory = ref([])
 const wrongBook = ref([])
 const achievements = ref([])
 const learnedWordsCount = ref(0)
-const totalWordsCount = ref(55)
+const totalWordsCount = ref(0)
 const completedCoursesCount = ref(0)
-const totalCoursesCount = ref(5)
+const totalCoursesCount = ref(0)
 const testStats = ref({
   totalTests: 0,
   avgScore: 0,
@@ -356,6 +365,7 @@ const handleAuth = async () => {
           currentUser.value = { ...user }
           isLoggedIn.value = true
           localStorage.setItem('currentUser', JSON.stringify(currentUser.value))
+          ensureUserStorageInitialized(currentUser.value.username)
           emit('login-success', currentUser.value)
           ElMessage.success('登录成功')
           loadUserData()
@@ -380,6 +390,7 @@ const handleAuth = async () => {
 
           users.push(newUser)
           saveUsers(users)
+          ensureUserStorageInitialized(newUser.username)
 
           ElMessage.success('注册成功，请登录')
           isLogin.value = true
@@ -403,26 +414,30 @@ const handleLogout = () => {
   ElMessage.success('已退出登录')
 }
 
-// 加载用户数据
+// 加载用户数据（所有 key 按当前登录用户隔离）
 const loadUserData = () => {
+  if (currentUser.value?.username) {
+    ensureUserStorageInitialized(currentUser.value.username)
+  }
+
   learningHistory.value = []
   wrongBook.value = []
   achievements.value = []
   learnedWordsCount.value = 0
   completedCoursesCount.value = 0
-  totalWordsCount.value = 55
-  totalCoursesCount.value = 5
+  totalWordsCount.value = getWords().length
+  totalCoursesCount.value = getCourses().length
   testStats.value = {
     totalTests: 0,
     avgScore: 0,
     bestScore: 0
   }
 
-  // 加载收藏
+  // 加载收藏（getFavorites 内部已按用户隔离）
   favorites.value = getFavorites()
 
   // 加载学习历史
-  const savedHistory = localStorage.getItem('learningHistory')
+  const savedHistory = localStorage.getItem(userScopedKey('learningHistory'))
   if (savedHistory) {
     try {
       const parsed = JSON.parse(savedHistory)
@@ -433,7 +448,7 @@ const loadUserData = () => {
   }
 
   // 加载错题本
-  const savedWrongBook = localStorage.getItem('wrongBook')
+  const savedWrongBook = localStorage.getItem(userScopedKey('wrongBook'))
   if (savedWrongBook) {
     try {
       const parsed = JSON.parse(savedWrongBook)
@@ -444,7 +459,8 @@ const loadUserData = () => {
   }
 
   // 加载成就
-  const savedAchievements = localStorage.getItem('testAchievements') || localStorage.getItem('achievements')
+  const savedAchievements = localStorage.getItem(userScopedKey('testAchievements'))
+    || localStorage.getItem(userScopedKey('achievements'))
   if (savedAchievements) {
     try {
       const parsed = JSON.parse(savedAchievements)
@@ -465,7 +481,7 @@ const loadUserData = () => {
     learningHistory.value.map(item => item.word || item.title || item.name).filter(Boolean)
   ).size
 
-  const savedProgress = localStorage.getItem('learningProgress')
+  const savedProgress = localStorage.getItem(userScopedKey('learningProgress'))
   if (savedProgress) {
     try {
       const progress = JSON.parse(savedProgress)
@@ -477,7 +493,7 @@ const loadUserData = () => {
   } else {
     learnedWordsCount.value = historyWordCount
 
-    const videoProgress = localStorage.getItem('videoLearningProgress')
+    const videoProgress = localStorage.getItem(userScopedKey('videoLearningProgress'))
     if (videoProgress) {
       try {
         const parsed = JSON.parse(videoProgress)
@@ -492,26 +508,8 @@ const loadUserData = () => {
     }
   }
 
-  try {
-    const storedWords = JSON.parse(localStorage.getItem('adminWords') || '[]')
-    if (Array.isArray(storedWords) && storedWords.length > 0) {
-      totalWordsCount.value = storedWords.length
-    }
-  } catch (error) {
-    totalWordsCount.value = 55
-  }
-
-  try {
-    const storedCourses = JSON.parse(localStorage.getItem('adminCourses') || '[]')
-    if (Array.isArray(storedCourses) && storedCourses.length > 0) {
-      totalCoursesCount.value = storedCourses.length
-    }
-  } catch (error) {
-    totalCoursesCount.value = 5
-  }
-
   // 加载测试统计
-  const savedTestStats = localStorage.getItem('testStats')
+  const savedTestStats = localStorage.getItem(userScopedKey('testStats'))
   if (savedTestStats) {
     try {
       const parsed = JSON.parse(savedTestStats)
@@ -529,7 +527,7 @@ const loadUserData = () => {
     }
   } else {
     try {
-      const records = JSON.parse(localStorage.getItem('testRecords') || '[]')
+      const records = JSON.parse(localStorage.getItem(userScopedKey('testRecords')) || '[]')
       if (Array.isArray(records) && records.length > 0) {
         const total = records.length
         const scoreSum = records.reduce((sum, record) => {
@@ -546,7 +544,7 @@ const loadUserData = () => {
           avgScore: Math.round(scoreSum / total * 100),
           bestScore: Math.round(bestRatio * 100)
         }
-        localStorage.setItem('testStats', JSON.stringify(testStats.value))
+        localStorage.setItem(userScopedKey('testStats'), JSON.stringify(testStats.value))
       }
     } catch (error) {
       testStats.value = {
@@ -572,6 +570,7 @@ onMounted(() => {
     try {
       currentUser.value = JSON.parse(savedUser)
       isLoggedIn.value = true
+      ensureUserStorageInitialized(currentUser.value.username)
       loadUserData()
     } catch (error) {
       localStorage.removeItem('currentUser')
@@ -589,7 +588,7 @@ watch(isLoggedIn, (val) => {
 
 <style scoped>
 .user-center {
-  padding: 24px;
+  padding: clamp(16px, 3vw, 24px);
 }
 
 /* 登录/注册 */
@@ -620,6 +619,7 @@ watch(isLoggedIn, (val) => {
 .profile-container {
   max-width: 900px;
   margin: 0 auto;
+  width: min(100%, 900px);
 }
 
 .profile-card {
@@ -659,11 +659,14 @@ watch(isLoggedIn, (val) => {
 .stats-row {
   display: flex;
   justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 16px;
   padding-top: 20px;
 }
 
 .stat-item {
   text-align: center;
+  min-width: 110px;
 }
 
 .stat-value {
@@ -681,6 +684,28 @@ watch(isLoggedIn, (val) => {
 /* 内容卡片 */
 .content-card {
   margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.content-card :deep(.el-tabs__header) {
+  margin-bottom: 20px;
+}
+
+.content-card :deep(.el-tabs__nav-wrap) {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.content-card :deep(.el-tabs__nav-wrap::after) {
+  display: none;
+}
+
+.content-card :deep(.el-tabs__nav) {
+  flex-wrap: nowrap;
+}
+
+.content-card :deep(.el-tabs__item) {
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -698,6 +723,8 @@ watch(isLoggedIn, (val) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 16px;
   background: #f5f7fa;
   border-radius: 8px;
@@ -707,6 +734,8 @@ watch(isLoggedIn, (val) => {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .word-name {
@@ -731,6 +760,7 @@ watch(isLoggedIn, (val) => {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 16px;
   background: #f5f7fa;
   border-radius: 8px;
@@ -775,6 +805,8 @@ watch(isLoggedIn, (val) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-bottom: 16px;
   color: #606266;
 }
@@ -842,6 +874,7 @@ watch(isLoggedIn, (val) => {
 
 .test-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 40px;
   margin-top: 12px;
 }
@@ -875,6 +908,7 @@ watch(isLoggedIn, (val) => {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
   padding: 16px;
   background: #f5f7fa;
   border-radius: 8px;
@@ -922,14 +956,17 @@ watch(isLoggedIn, (val) => {
     width: 100%;
   }
 
+  .user-center {
+    padding: 16px;
+  }
+
   .profile-header {
     flex-direction: column;
     text-align: center;
   }
 
   .stats-row {
-    flex-wrap: wrap;
-    gap: 20px;
+    gap: 14px;
   }
 
   .stat-item {

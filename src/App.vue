@@ -101,7 +101,6 @@ import { ArrowDown, User, SwitchButton } from '@element-plus/icons-vue'
 import SignDictionary from './components/SignDictionary.vue'
 import SignLearning from './components/SignLearning.vue'
 import SignTest from './components/SignTest.vue'
-import GestureRecognition from './components/OptimizedGestureRecognition.vue'
 import Community from './components/Community.vue'
 import AIChat from './components/AIChat.vue'
 import UserCenter from './components/UserCenter.vue'
@@ -118,7 +117,6 @@ const navItems = [
   { key: 'dictionary', label: '手语词典', icon: '📖' },
   { key: 'learn', label: '手语学习', icon: '📚' },
   { key: 'test', label: '手语测试', icon: '✍️' },
-  { key: 'recognition', label: '手语识别', icon: '👁️' },
   { key: 'community', label: '交流社区', icon: '💬' },
   { key: 'ai', label: 'AI助手', icon: '🤖' },
   { key: 'user', label: '个人中心', icon: '👤' },
@@ -130,7 +128,6 @@ const componentMap = {
   dictionary: markRaw(SignDictionary),
   learn: markRaw(SignLearning),
   test: markRaw(SignTest),
-  recognition: markRaw(GestureRecognition),
   community: markRaw(Community),
   ai: markRaw(AIChat),
   user: markRaw(UserCenter),
@@ -537,13 +534,15 @@ body {
 
 .content-wrapper {
   max-width: 1400px;
+  width: 100%;
+  min-width: 0;
   margin: 0 auto;
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.04);
   border-radius: var(--radius-lg);
   min-height: calc(100vh - var(--header-height) - var(--nav-height) - var(--footer-height) - 48px);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-  overflow: hidden;
+  overflow: visible;
 }
 
 /* 页面切换动画 */

@@ -241,13 +241,14 @@
 </template>
 
 <script>
-import { Loading, Camera, Connection } from '@element-plus/icons-vue'
+import { Loading, Camera as CameraIcon, Connection } from '@element-plus/icons-vue'
+import { loadHandsCtor, loadCameraCtor } from '../utils/mediapipeLoader'
 
 export default {
   name: 'ImprovedBaiduAI',
   components: {
     Loading,
-    Camera,
+    Camera: CameraIcon,
     Connection
   },
   data() {
@@ -281,6 +282,7 @@ export default {
       // MediaPipe
       hands: null,
       camera: null,
+      cameraCtor: null,
       mediaPipeReady: false
     }
   },
@@ -345,14 +347,21 @@ export default {
     // 初始化MediaPipe
     async initializeMediaPipe() {
       try {
-        const { Hands } = await import('@mediapipe/hands')
-        const { Camera } = await import('@mediapipe/camera_utils')
+        const [HandsCtor, CameraCtor] = await Promise.all([
+          loadHandsCtor(),
+          loadCameraCtor()
+        ])
 
-        this.hands = new Hands({
+        if (typeof HandsCtor !== 'function' || typeof CameraCtor !== 'function') {
+          throw new Error('MediaPipe 模块加载失败')
+        }
+
+        this.hands = new HandsCtor({
           locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
           }
         })
+        this.cameraCtor = CameraCtor
 
         this.hands.setOptions({
           maxNumHands: 2,
@@ -420,7 +429,11 @@ export default {
 
         videoElement.srcObject = stream
 
-        this.camera = new Camera(videoElement, {
+        if (typeof this.cameraCtor !== 'function') {
+          throw new Error('摄像头组件初始化失败')
+        }
+
+        this.camera = new this.cameraCtor(videoElement, {
           onFrame: async () => {
             if (this.hands && this.mediaPipeReady) {
               await this.hands.send({ image: videoElement })

@@ -155,8 +155,7 @@
 </template>
 
 <script>
-import { Hands } from '@mediapipe/hands'
-import { Camera } from '@mediapipe/camera_utils'
+import { loadHandsCtor, loadCameraCtor } from '../utils/mediapipeLoader'
 
 export default {
   name: 'BaiduAIRecognition',
@@ -183,6 +182,7 @@ export default {
       // MediaPipe
       hands: null,
       camera: null,
+      cameraCtor: null,
 
       // API统计
       apiStats: {
@@ -209,7 +209,17 @@ export default {
     // 初始化MediaPipe
     async initializeMediaPipe() {
       try {
-        this.hands = new Hands({
+        const [HandsCtor, CameraCtor] = await Promise.all([
+          loadHandsCtor(),
+          loadCameraCtor()
+        ])
+
+        if (typeof HandsCtor !== 'function' || typeof CameraCtor !== 'function') {
+          throw new Error('MediaPipe初始化失败')
+        }
+
+        this.cameraCtor = CameraCtor
+        this.hands = new HandsCtor({
           locateFile: (file) => {
             return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
           }
@@ -328,7 +338,11 @@ export default {
         const videoElement = this.$refs.videoElement
         const canvasElement = this.$refs.canvasElement
 
-        this.camera = new Camera(videoElement, {
+        if (typeof this.cameraCtor !== 'function') {
+          throw new Error('摄像头组件初始化失败')
+        }
+
+        this.camera = new this.cameraCtor(videoElement, {
           onFrame: async () => {
             await this.hands.send({ image: videoElement })
           },

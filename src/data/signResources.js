@@ -231,8 +231,8 @@ export const signVocabulary = [
     video: '/videos/signs/nainai.mp4',
     image: '/images/signs/nainai.png',
     steps: [
-      '先做"妈妈"的手势',
-      '然后再做"爸爸"的手势',
+      '先做"爸爸"的手势',
+      '然后再做"妈妈"的手势',
       '表示"爸爸的妈妈"'
     ],
     examples: ['我奶奶', '奶奶好']
@@ -435,15 +435,56 @@ export const getVocabularyByCategory = (category) => {
   return signVocabulary.filter(item => item.category === category)
 }
 
+const stripDiacritics = (value = '') => {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+export const normalizeSearchText = (value = '') => {
+  return stripDiacritics(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '')
+}
+
+export const getPinyinInitials = (value = '') => {
+  return stripDiacritics(value)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(part => part[0])
+    .join('')
+}
+
+export const matchesVocabularyKeyword = (item, keyword = '') => {
+  const normalizedKeyword = normalizeSearchText(keyword)
+  if (!normalizedKeyword) return true
+
+  const searchableFields = [
+    item.word,
+    item.pinyin,
+    item.description,
+    item.category,
+    ...(Array.isArray(item.steps) ? item.steps : []),
+    ...(Array.isArray(item.examples) ? item.examples : [])
+  ]
+
+  const matchedText = searchableFields.some(field =>
+    normalizeSearchText(field).includes(normalizedKeyword)
+  )
+
+  if (matchedText) {
+    return true
+  }
+
+  const initials = getPinyinInitials(item.pinyin)
+  return initials.includes(normalizedKeyword)
+}
+
 // 搜索词汇
 export const searchVocabulary = (keyword) => {
   if (!keyword) return signVocabulary
-  const lowerKeyword = keyword.toLowerCase()
-  return signVocabulary.filter(item =>
-    item.word.includes(keyword) ||
-    item.pinyin.toLowerCase().includes(lowerKeyword) ||
-    item.description.includes(keyword)
-  )
+  return signVocabulary.filter(item => matchesVocabularyKeyword(item, keyword))
 }
 
 // 获取视频URL

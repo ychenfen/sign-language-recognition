@@ -41,6 +41,78 @@ const safeParse = (value, fallback = null) => {
 
 const readJSON = (key, fallback = null) => safeParse(localStorage.getItem(key), fallback)
 const writeJSON = (key, value) => localStorage.setItem(key, JSON.stringify(value))
+const cloneDefault = value => JSON.parse(JSON.stringify(value))
+
+const USER_STORAGE_DEFAULTS = {
+  favorites: [],
+  learningHistory: [],
+  wrongBook: [],
+  testAchievements: [],
+  testRecords: [],
+  testStats: {
+    totalTests: 0,
+    avgScore: 0,
+    bestScore: 0
+  },
+  learningProgress: {
+    learnedWords: 0,
+    completedCourses: 0,
+    completedLessons: 0,
+    lastUpdate: null
+  },
+  videoLearningProgress: {
+    completedLessons: [],
+    stats: {
+      lessonsCompleted: 0,
+      totalMinutes: 0,
+      streak: 1
+    },
+    lastUpdate: null
+  }
+}
+
+const LEGACY_USER_KEY_MAP = {
+  learningHistory: username => `${username}_history`,
+  testAchievements: username => `${username}_achievements`
+}
+
+// 获取当前登录用户名，供各模块生成用户专属 localStorage key
+export const getCurrentUsername = () => {
+  const user = safeParse(localStorage.getItem('currentUser'), null)
+  return user?.username || ''
+}
+
+export const buildUserScopedKey = (username, key) => {
+  return username ? `${username}_${key}` : key
+}
+
+// 生成用户专属 key，未登录时退化为全局 key
+export const userScopedKey = (key) => {
+  const username = getCurrentUsername()
+  return buildUserScopedKey(username, key)
+}
+
+export const ensureUserStorageInitialized = (username) => {
+  if (!username) return
+
+  Object.entries(USER_STORAGE_DEFAULTS).forEach(([key, defaultValue]) => {
+    const scopedKey = buildUserScopedKey(username, key)
+    if (localStorage.getItem(scopedKey) != null) {
+      return
+    }
+
+    const legacyKey = LEGACY_USER_KEY_MAP[key]?.(username)
+    if (legacyKey) {
+      const legacyValue = localStorage.getItem(legacyKey)
+      if (legacyValue != null) {
+        localStorage.setItem(scopedKey, legacyValue)
+        return
+      }
+    }
+
+    localStorage.setItem(scopedKey, JSON.stringify(cloneDefault(defaultValue)))
+  })
+}
 
 const normalizeWord = (word, index = 0) => {
   const normalizedWord = word?.word || word?.name || `未命名词汇${index + 1}`
@@ -56,6 +128,33 @@ const normalizeWord = (word, index = 0) => {
     steps: Array.isArray(word?.steps) && word.steps.length > 0 ? word.steps : ['暂无动作分解'],
     examples: Array.isArray(word?.examples) ? word.examples : []
   }
+}
+
+const isSameWord = (left, right) => {
+  if (!left || !right) return false
+  if (left.id != null && right.id != null && left.id === right.id) return true
+  return String(left.word || left.name || '').trim() === String(right.word || right.name || '').trim()
+}
+
+const mergeWordsWithDefaults = (storedWords = []) => {
+  const defaultWords = signVocabulary.map((word, index) => normalizeWord(word, index))
+  const normalizedStoredWords = storedWords.map((word, index) => normalizeWord(word, index))
+
+  const mergedDefaults = defaultWords.map(defaultWord => {
+    const storedMatch = normalizedStoredWords.find(word => isSameWord(word, defaultWord))
+    return storedMatch
+      ? {
+          ...storedMatch,
+          ...defaultWord
+        }
+      : defaultWord
+  })
+
+  const customWords = normalizedStoredWords.filter(storedWord =>
+    !defaultWords.some(defaultWord => isSameWord(defaultWord, storedWord))
+  )
+
+  return [...mergedDefaults, ...customWords]
 }
 
 const normalizeLesson = (lesson, index = 0) => ({
@@ -143,7 +242,9 @@ export const saveUsers = (users = []) => {
 export const getWords = () => {
   const words = readJSON(STORAGE_KEYS.words, null)
   if (Array.isArray(words) && words.length > 0) {
-    return words.map((word, index) => normalizeWord(word, index))
+    const mergedWords = mergeWordsWithDefaults(words)
+    writeJSON(STORAGE_KEYS.words, mergedWords)
+    return mergedWords
   }
   const defaults = signVocabulary.map((word, index) => normalizeWord(word, index))
   writeJSON(STORAGE_KEYS.words, defaults)
@@ -215,21 +316,33 @@ export const saveSensitiveWords = (words = []) => {
 }
 
 export const getFavorites = () => {
-  const storedFavorites = readJSON(STORAGE_KEYS.favorites, null)
-  const legacyFavorites = readJSON(LEGACY_KEYS.favorites, null)
-  const sourceFavorites = Array.isArray(storedFavorites)
-    ? storedFavorites
-    : (Array.isArray(legacyFavorites) ? legacyFavorites : [])
+  const username = getCurrentUsername()
+  const key = buildUserScopedKey(username, STORAGE_KEYS.favorites)
+  const storedFavorites = readJSON(key, null)
 
-  const normalized = sourceFavorites.map((favorite, index) => normalizeFavorite(favorite, index))
-  writeJSON(STORAGE_KEYS.favorites, normalized)
-  writeJSON(LEGACY_KEYS.favorites, normalized)
-  return normalized
+  if (username) {
+    if (!Array.isArray(storedFavorites)) {
+      writeJSON(key, [])
+      return []
+    }
+    return storedFavorites.map((favorite, index) => normalizeFavorite(favorite, index))
+  }
+
+  if (!Array.isArray(storedFavorites) || storedFavorites.length === 0) {
+    const globalFavorites = readJSON(STORAGE_KEYS.favorites, null)
+    const legacyFavorites = readJSON(LEGACY_KEYS.favorites, null)
+    const source = Array.isArray(globalFavorites) ? globalFavorites
+      : (Array.isArray(legacyFavorites) ? legacyFavorites : [])
+    const normalized = source.map((favorite, index) => normalizeFavorite(favorite, index))
+    writeJSON(key, normalized)
+    return normalized
+  }
+  return storedFavorites.map((favorite, index) => normalizeFavorite(favorite, index))
 }
 
 export const saveFavorites = (favorites = []) => {
   if (!Array.isArray(favorites)) return
+  const key = userScopedKey(STORAGE_KEYS.favorites)
   const normalized = favorites.map((favorite, index) => normalizeFavorite(favorite, index))
-  writeJSON(STORAGE_KEYS.favorites, normalized)
-  writeJSON(LEGACY_KEYS.favorites, normalized)
+  writeJSON(key, normalized)
 }
